@@ -125,6 +125,23 @@ void board_init(void)
     buttons_init();
 }
 
+void pass_delay_when_button_is_pressed(uint32_t delay_ms, uint32_t discretization_step)
+{
+    int delay = delay_ms;
+    uint8_t count = (delay < 0) ? 2 : 1;
+
+    delay = delay_ms / count;
+    for (int i = 0; i < count; i++, delay = delay_ms / count)
+    while (delay > 0)
+    {
+        nrf_delay_ms((delay - discretization_step > 0) ? discretization_step : delay);
+        if (!nrf_gpio_pin_read(BUTTON_1)) /* Button pressed, active 0 */
+        {
+            delay -= discretization_step;
+        }
+    }
+}
+
 /**
  * @brief Function for application main entry.
  */
@@ -139,20 +156,21 @@ int main(void)
     /* Toggle LEDs. */
     while (true)
     {
-        dongle_id = DONGLE_ID;
-        multiplier = 1000;
-        for (int i = 0; i < LEDS_NUMBER; i++)
+        if (!nrf_gpio_pin_read(BUTTON_1)) /* Button pressed, active 0 */
         {
-            dongle_id_digit = dongle_id / multiplier;
-            dongle_id -= dongle_id_digit * multiplier;
-            for (int j = 0; j < dongle_id_digit; j++)
+            dongle_id = DONGLE_ID;
+            multiplier = 1000;
+            for (int i = 0; i < LEDS_NUMBER; i++)
             {
-                led_on(i);
-                nrf_delay_ms(500);
-                led_off(i);
-                nrf_delay_ms(500);
+                dongle_id_digit = dongle_id / multiplier;
+                for (int j = 0; j < dongle_id_digit << 1; j++)
+                {
+                    nrf_gpio_pin_toggle(led_list[i]);
+                    pass_delay_when_button_is_pressed(500,50);
+                }
+                dongle_id -= dongle_id_digit * multiplier;
+                multiplier /= 10;
             }
-            multiplier /= 10;
         }
     }
 }
