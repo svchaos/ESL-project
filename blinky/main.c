@@ -49,10 +49,14 @@
 #include "nrf_log_backend_usb.h"
 
 #include "app_pwm.h"
+#include "app_timer.h"
+#include "nrfx_systick.h"
 
 #define DONGLE_ID 4965
 const uint8_t led_list[LEDS_NUMBER] = LEDS_LIST;
 const uint8_t btn_list[BUTTONS_NUMBER] = BUTTONS_LIST;
+bool     m_counter_active = false;
+uint8_t  m_counter = 0;
 
 void led_off(uint32_t led_idx)
 {
@@ -120,6 +124,7 @@ void board_init(void)
 {
     leds_init();
     buttons_init();
+    nrfx_systick_init();
 }
 
 void pass_delay_when_button_is_pressed(uint32_t delay_ms, uint32_t discretization_step)
@@ -148,12 +153,25 @@ void logs_init()
 }
 
 APP_PWM_INSTANCE(PWM1,1);                   // Create the instance "PWM1" using TIMER1.
+/* Counter timer. */
+APP_TIMER_DEF(m_timer_0);
 
 static volatile bool ready_flag;            // A flag indicating PWM status.
 
 void pwm_ready_callback(uint32_t pwm_id)    // PWM callback function
 {
     ready_flag = true;
+}
+
+static void timer_handle(void * p_context)
+{
+    UNUSED_PARAMETER(p_context);
+
+    if (m_counter_active)
+    {
+        m_counter++;
+        NRF_LOG_RAW_INFO("counter = %d\n", m_counter);
+    }
 }
 
 /**
@@ -165,18 +183,13 @@ int main(void)
     // int dongle_id;
     // int multiplier;
     ret_code_t err_code;
+    ret_code_t ret;
+    uint32_t value;
 
     /* 2-channel PWM, 200Hz, output on DK LED pins. */
-    app_pwm_config_t pwm1_cfg = APP_PWM_DEFAULT_CONFIG_2CH(5000L, BSP_LED_0, BSP_LED_1);
 
-    logs_init();
-
-    /* Configure board. */
-    board_init();
-
-    NRF_LOG_INFO("Workshop4 sample started.");
-    LOG_BACKEND_USB_PROCESS();
-    NRF_LOG_PROCESS();
+    /* 2-channel PWM, 200Hz, output on DK LED pins. */
+    app_pwm_config_t pwm1_cfg = APP_PWM_DEFAULT_CONFIG_1CH(1000L, BSP_LED_2);
 
     /* Switch the polarity of the second channel. */
     pwm1_cfg.pin_polarity[1] = APP_PWM_POLARITY_ACTIVE_HIGH;
@@ -186,7 +199,13 @@ int main(void)
     APP_ERROR_CHECK(err_code);
     app_pwm_enable(&PWM1);
 
-    uint32_t value;
+
+    ret = app_timer_create(&m_timer_0, APP_TIMER_MODE_REPEATED, timer_handle);
+    APP_ERROR_CHECK(ret);
+
+    ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(1000), NULL);
+    APP_ERROR_CHECK(ret);
+
     while (true)
     {
         for (uint8_t i = 0; i < 40; ++i)
