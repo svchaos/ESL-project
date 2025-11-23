@@ -48,6 +48,8 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_log_backend_usb.h"
 
+#include "app_pwm.h"
+
 #define DONGLE_ID 4965
 const uint8_t led_list[LEDS_NUMBER] = LEDS_LIST;
 const uint8_t btn_list[BUTTONS_NUMBER] = BUTTONS_LIST;
@@ -145,14 +147,27 @@ void logs_init()
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
+APP_PWM_INSTANCE(PWM1,1);                   // Create the instance "PWM1" using TIMER1.
+
+static volatile bool ready_flag;            // A flag indicating PWM status.
+
+void pwm_ready_callback(uint32_t pwm_id)    // PWM callback function
+{
+    ready_flag = true;
+}
+
 /**
  * @brief Function for application main entry.
  */
 int main(void)
 {
-    int dongle_id_digit;
-    int dongle_id;
-    int multiplier;
+    // int dongle_id_digit;
+    // int dongle_id;
+    // int multiplier;
+    ret_code_t err_code;
+
+    /* 2-channel PWM, 200Hz, output on DK LED pins. */
+    app_pwm_config_t pwm1_cfg = APP_PWM_DEFAULT_CONFIG_2CH(5000L, BSP_LED_0, BSP_LED_1);
 
     logs_init();
 
@@ -163,28 +178,55 @@ int main(void)
     LOG_BACKEND_USB_PROCESS();
     NRF_LOG_PROCESS();
 
-    /* Toggle LEDs. */
+    /* Switch the polarity of the second channel. */
+    pwm1_cfg.pin_polarity[1] = APP_PWM_POLARITY_ACTIVE_HIGH;
+
+    /* Initialize and enable PWM. */
+    err_code = app_pwm_init(&PWM1,&pwm1_cfg,pwm_ready_callback);
+    APP_ERROR_CHECK(err_code);
+    app_pwm_enable(&PWM1);
+
+    uint32_t value;
     while (true)
     {
-        LOG_BACKEND_USB_PROCESS();
-        NRF_LOG_PROCESS();
-        if (!nrf_gpio_pin_read(BUTTON_1)) /* Button pressed, active 0 */
+        for (uint8_t i = 0; i < 40; ++i)
         {
-            dongle_id = DONGLE_ID;
-            multiplier = 1000;
-            for (int i = 0; i < LEDS_NUMBER; i++)
-            {
-                dongle_id_digit = dongle_id / multiplier;
-                for (int j = 0; j < dongle_id_digit << 1; j++)
-                {
-                    nrf_gpio_pin_toggle(led_list[i]);
-                    pass_delay_when_button_is_pressed(500,50);
-                }
-                dongle_id -= dongle_id_digit * multiplier;
-                multiplier /= 10;
-            }
+            value = (i < 20) ? (i * 5) : (100 - (i - 20) * 5);
+
+            ready_flag = false;
+            /* Set the duty cycle - keep trying until PWM is ready... */
+            while (app_pwm_channel_duty_set(&PWM1, 0, value) == NRF_ERROR_BUSY);
+
+            /* ... or wait for callback. */
+            while (!ready_flag);
+            APP_ERROR_CHECK(app_pwm_channel_duty_set(&PWM1, 1, value));
+            nrf_delay_ms(25);
         }
     }
+
+    // /* Toggle LEDs. */
+    // while (true)
+    // {
+    //     if (!nrf_gpio_pin_read(BUTTON_1)) /* Button pressed, active 0 */
+    //     {
+    //         dongle_id = DONGLE_ID;
+    //         multiplier = 1000;
+    //         for (int i = 0; i < LEDS_NUMBER; i++)
+    //         {
+    //             dongle_id_digit = dongle_id / multiplier;
+    //             for (int j = 0; j < dongle_id_digit << 1; j++)
+    //             {
+    //                 NRF_LOG_INFO("LED %d.", i);
+    //                 LOG_BACKEND_USB_PROCESS();
+    //                 NRF_LOG_PROCESS();
+    //                 nrf_gpio_pin_toggle(led_list[i]);
+    //                 pass_delay_when_button_is_pressed(500,50);
+    //             }
+    //             dongle_id -= dongle_id_digit * multiplier;
+    //             multiplier /= 10;
+    //         }
+    //     }
+    // }
 }
 
 /**
