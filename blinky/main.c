@@ -48,9 +48,9 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_log_backend_usb.h"
 
-#include "app_pwm.h"
 #include "app_timer.h"
 #include "nrfx_systick.h"
+#include "nrfx_pwm.h"
 
 #define DONGLE_ID 4965
 const uint8_t led_list[LEDS_NUMBER] = LEDS_LIST;
@@ -154,16 +154,17 @@ void logs_init()
 
 APP_PWM_INSTANCE(PWM1,1);                   // Create the instance "PWM1" using TIMER1.
 /* Counter timer. */
-APP_TIMER_DEF(m_timer_0);
+// APP_TIMER_DEF(m_timer_0);
 
 static volatile bool ready_flag;            // A flag indicating PWM status.
+volatile nrfx_systick_state_t systick_state;
 
 void pwm_ready_callback(uint32_t pwm_id)    // PWM callback function
 {
     ready_flag = true;
 }
 
-static void timer_handle(void * p_context)
+void timer_handle(void * p_context)
 {
     UNUSED_PARAMETER(p_context);
 
@@ -183,12 +184,10 @@ int main(void)
     // int dongle_id;
     // int multiplier;
     ret_code_t err_code;
-    ret_code_t ret;
+    // ret_code_t ret;
     uint32_t value;
 
-    /* 2-channel PWM, 200Hz, output on DK LED pins. */
-
-    /* 2-channel PWM, 200Hz, output on DK LED pins. */
+    /* 1-channel PWM, 1kHz, output on Dongle LED pins. */
     app_pwm_config_t pwm1_cfg = APP_PWM_DEFAULT_CONFIG_1CH(1000L, BSP_LED_2);
 
     /* Switch the polarity of the second channel. */
@@ -200,11 +199,11 @@ int main(void)
     app_pwm_enable(&PWM1);
 
 
-    ret = app_timer_create(&m_timer_0, APP_TIMER_MODE_REPEATED, timer_handle);
-    APP_ERROR_CHECK(ret);
+    // ret = app_timer_create(&m_timer_0, APP_TIMER_MODE_REPEATED, timer_handle);
+    // APP_ERROR_CHECK(ret);
 
-    ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(1000), NULL);
-    APP_ERROR_CHECK(ret);
+    // ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(1000), NULL);
+    // APP_ERROR_CHECK(ret);
 
     while (true)
     {
@@ -219,7 +218,7 @@ int main(void)
             /* ... or wait for callback. */
             while (!ready_flag);
             APP_ERROR_CHECK(app_pwm_channel_duty_set(&PWM1, 1, value));
-            nrf_delay_ms(25);
+            nrfx_systick_delay_ms(25);
         }
     }
 
