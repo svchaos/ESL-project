@@ -50,7 +50,7 @@
 
 #include "app_timer.h"
 #include "nrfx_systick.h"
-#include "nrfx_pwm.h"
+#include "nrf_drv_pwm.h"
 
 #define DONGLE_ID 4965
 const uint8_t led_list[LEDS_NUMBER] = LEDS_LIST;
@@ -152,9 +152,6 @@ void logs_init()
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
-APP_PWM_INSTANCE(PWM1,1);                   // Create the instance "PWM1" using TIMER1.
-/* Counter timer. */
-// APP_TIMER_DEF(m_timer_0);
 
 static volatile bool ready_flag;            // A flag indicating PWM status.
 volatile nrfx_systick_state_t systick_state;
@@ -175,6 +172,107 @@ void timer_handle(void * p_context)
     }
 }
 
+static nrf_drv_pwm_t m_pwm0 = NRF_DRV_PWM_INSTANCE(0);
+// static nrf_drv_pwm_t m_pwm1 = NRF_DRV_PWM_INSTANCE(1);
+// static nrf_drv_pwm_t m_pwm2 = NRF_DRV_PWM_INSTANCE(2);
+
+// This is for tracking PWM instances being used, so we can unintialize only
+// the relevant ones when switching from one demo to another.
+#define USED_PWM(idx) (1UL << idx)
+static uint8_t m_used = 0;
+
+
+static uint16_t const              m_demo1_top  = 10000;
+static uint16_t const              m_demo1_step = 200;
+static uint8_t                     m_demo1_phase;
+static nrf_pwm_values_individual_t m_demo1_seq_values;
+static nrf_pwm_sequence_t const    m_demo1_seq =
+{
+    .values.p_individual = &m_demo1_seq_values,
+    .length              = NRF_PWM_VALUES_LENGTH(m_demo1_seq_values),
+    .repeats             = 0,
+    .end_delay           = 0
+};
+
+static void demo1_handler(nrf_drv_pwm_evt_type_t event_type)
+{
+    if (event_type == NRF_DRV_PWM_EVT_FINISHED)
+    {
+        uint8_t channel    = m_demo1_phase >> 1;
+        bool    down       = m_demo1_phase & 1;
+        bool    next_phase = false;
+
+        uint16_t * p_channels = (uint16_t *)&m_demo1_seq_values;
+        uint16_t value = p_channels[channel];
+        if (down)
+        {
+            value -= m_demo1_step;
+            if (value == 0)
+            {
+                next_phase = true;
+            }
+        }
+        else
+        {
+            value += m_demo1_step;
+            if (value >= m_demo1_top)
+            {
+                next_phase = true;
+            }
+        }
+        p_channels[channel] = value;
+
+        if (next_phase)
+        {
+            if (++m_demo1_phase >= 2 * NRF_PWM_CHANNEL_COUNT)
+            {
+                m_demo1_phase = 0;
+            }
+        }
+    }
+}
+static void demo1(void)
+{
+    NRF_LOG_INFO("Demo 1");
+
+    /*
+     * This demo plays back a sequence with different values for individual
+     * channels (LED 1 - LED 4). Only four values are used (one per channel).
+     * Every time the values are loaded into the compare registers, they are
+     * updated in the provided event handler. The values are updated in such
+     * a way that increase and decrease of the light intensity can be observed
+     * continuously on succeeding channels (one second per channel).
+     */
+
+    nrf_drv_pwm_config_t const config0 =
+    {
+        .output_pins =
+        {
+            BSP_LED_0 | NRF_DRV_PWM_PIN_INVERTED, // channel 0
+            BSP_LED_1 | NRF_DRV_PWM_PIN_INVERTED, // channel 1
+            BSP_LED_3 | NRF_DRV_PWM_PIN_INVERTED, // channel 2
+            BSP_LED_2 | NRF_DRV_PWM_PIN_INVERTED  // channel 3
+        },
+        .irq_priority = APP_IRQ_PRIORITY_LOWEST,
+        .base_clock   = NRF_PWM_CLK_1MHz,
+        .count_mode   = NRF_PWM_MODE_UP,
+        .top_value    = m_demo1_top,
+        .load_mode    = NRF_PWM_LOAD_INDIVIDUAL,
+        .step_mode    = NRF_PWM_STEP_AUTO
+    };
+    APP_ERROR_CHECK(nrf_drv_pwm_init(&m_pwm0, &config0, demo1_handler));
+    m_used |= USED_PWM(0);
+
+    m_demo1_seq_values.channel_0 = 0;
+    m_demo1_seq_values.channel_1 = 0;
+    m_demo1_seq_values.channel_2 = 0;
+    m_demo1_seq_values.channel_3 = 0;
+    m_demo1_phase                = 0;
+
+    (void)nrf_drv_pwm_simple_playback(&m_pwm0, &m_demo1_seq, 1,
+                                      NRF_DRV_PWM_FLAG_LOOP);
+}
+
 /**
  * @brief Function for application main entry.
  */
@@ -183,21 +281,9 @@ int main(void)
     // int dongle_id_digit;
     // int dongle_id;
     // int multiplier;
-    ret_code_t err_code;
+    // ret_code_t err_code;
     // ret_code_t ret;
-    uint32_t value;
-
-    /* 1-channel PWM, 1kHz, output on Dongle LED pins. */
-    app_pwm_config_t pwm1_cfg = APP_PWM_DEFAULT_CONFIG_1CH(1000L, BSP_LED_2);
-
-    /* Switch the polarity of the second channel. */
-    pwm1_cfg.pin_polarity[1] = APP_PWM_POLARITY_ACTIVE_HIGH;
-
-    /* Initialize and enable PWM. */
-    err_code = app_pwm_init(&PWM1,&pwm1_cfg,pwm_ready_callback);
-    APP_ERROR_CHECK(err_code);
-    app_pwm_enable(&PWM1);
-
+    // uint32_t value;
 
     // ret = app_timer_create(&m_timer_0, APP_TIMER_MODE_REPEATED, timer_handle);
     // APP_ERROR_CHECK(ret);
@@ -205,22 +291,24 @@ int main(void)
     // ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(1000), NULL);
     // APP_ERROR_CHECK(ret);
 
-    while (true)
-    {
-        for (uint8_t i = 0; i < 40; ++i)
-        {
-            value = (i < 20) ? (i * 5) : (100 - (i - 20) * 5);
+    demo1();
 
-            ready_flag = false;
-            /* Set the duty cycle - keep trying until PWM is ready... */
-            while (app_pwm_channel_duty_set(&PWM1, 0, value) == NRF_ERROR_BUSY);
+    // while (true)
+    // {
+    //     for (uint8_t i = 0; i < 40; ++i)
+    //     {
+    //         value = (i < 20) ? (i * 5) : (100 - (i - 20) * 5);
 
-            /* ... or wait for callback. */
-            while (!ready_flag);
-            APP_ERROR_CHECK(app_pwm_channel_duty_set(&PWM1, 1, value));
-            nrfx_systick_delay_ms(25);
-        }
-    }
+    //         ready_flag = false;
+    //         /* Set the duty cycle - keep trying until PWM is ready... */
+    //         while (app_pwm_channel_duty_set(&PWM1, 0, value) == NRF_ERROR_BUSY);
+
+    //         /* ... or wait for callback. */
+    //         while (!ready_flag);
+    //         APP_ERROR_CHECK(app_pwm_channel_duty_set(&PWM1, 1, value));
+    //         nrfx_systick_delay_ms(25);
+    //     }
+    // }
 
     // /* Toggle LEDs. */
     // while (true)
