@@ -60,8 +60,8 @@ bool     m_counter_active = false;
 uint8_t  m_counter = 0;
 
 /* Counter timer. */
-APP_TIMER_DEF(m_timer_0);
-
+// APP_TIMER_DEF(m_timer_0);
+APP_TIMER_DEF(m_timer_1);
 
 void led_off(uint32_t led_idx)
 {
@@ -127,7 +127,21 @@ void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
         NRF_LOG_RAW_INFO("button released");
     }
     else
-        NRF_LOG_RAW_INFO("button toggle");
+    {
+        ret_code_t ret;
+        if (!nrfx_gpiote_in_is_set(pin))
+        {
+            ret = app_timer_start(m_timer_1, APP_TIMER_TICKS(500), NULL);
+            APP_ERROR_CHECK(ret);
+            NRF_LOG_RAW_INFO("\n%d: button toggle, pin 0x%x set\n", app_timer_cnt_get(),pin);
+        }
+        else
+        {
+            ret = app_timer_stop(m_timer_1);
+            APP_ERROR_CHECK(ret);
+            NRF_LOG_RAW_INFO("\n%d: button toggle, pin 0x%x unset\n", app_timer_cnt_get(), pin);
+        }
+    }
 }
 
 void buttons_init(void)
@@ -145,6 +159,7 @@ void buttons_init(void)
     for (i = 0; i < BUTTONS_NUMBER; ++i)
     {
         nrfx_gpiote_in_init(btn_list[i], &config, button_handler);
+        nrfx_gpiote_in_event_enable(btn_list[i], true);
         // nrf_gpio_cfg_input(btn_list[i], BUTTON_PULL);
     }
 }
@@ -154,10 +169,10 @@ static void timer_handle(void * p_context)
 {
     UNUSED_PARAMETER(p_context);
 
-    if (m_counter_active)
+    if (true)
     {
         m_counter++;
-        NRF_LOG_RAW_INFO("counter = %d\n", m_counter);
+        NRF_LOG_RAW_INFO("\ntimer! counter = %d\n", m_counter);
     }
 }
 
@@ -166,12 +181,11 @@ void timer_init(void)
 {
     ret_code_t ret;
 
-    ret = app_timer_create(&m_timer_0, APP_TIMER_MODE_REPEATED, timer_handle);
+    app_timer_init();
+    ret = app_timer_create(&m_timer_1, APP_TIMER_MODE_SINGLE_SHOT, timer_handle);
     APP_ERROR_CHECK(ret);
 
-    // ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(50), NULL);
-    // APP_ERROR_CHECK(ret);
-}
+ }
 
 
 void board_init(void)
@@ -332,10 +346,10 @@ int main(void)
     // ret_code_t ret;
     // uint32_t value;
 
-    // ret = app_timer_create(&m_timer_0, APP_TIMER_MODE_REPEATED, timer_handle);
+    // ret = app_timer_create(&m_timer_1, APP_TIMER_MODE_REPEATED, timer_handle);
     // APP_ERROR_CHECK(ret);
 
-    // ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(1000), NULL);
+    // ret = app_timer_start(m_timer_1, APP_TIMER_TICKS(1000), NULL);
     // APP_ERROR_CHECK(ret);
 
     logs_init();
@@ -374,10 +388,10 @@ int main(void)
     //             dongle_id_digit = dongle_id / multiplier;
     //             for (int j = 0; j < dongle_id_digit << 1; j++)
     //             {
-                    NRF_LOG_INFO("test %i", i);
+                    // NRF_LOG_INFO("test %i", i);
                     LOG_BACKEND_USB_PROCESS();
                     NRF_LOG_PROCESS();
-                    nrf_delay_us(500);
+                    // nrf_delay_us(500);
     //                 nrf_gpio_pin_toggle(led_list[i]);
     //                 pass_delay_when_button_is_pressed(500,50);
     //             }
