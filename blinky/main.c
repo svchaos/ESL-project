@@ -49,7 +49,7 @@
 #include "nrf_log_backend_usb.h"
 
 #include "app_timer.h"
-#include "nrf_drv_pwm.h"
+#include "nrfx_systick.h"
 
 #include "nrfx_gpiote.h"
 
@@ -193,6 +193,7 @@ void board_init(void)
     nrfx_gpiote_init();
     leds_init();
     buttons_init();
+    nrfx_systick_init();
     timer_init();
 }
 
@@ -222,117 +223,117 @@ void logs_init()
 }
 
 
-static volatile bool ready_flag;            // A flag indicating PWM status.
+// static volatile bool ready_flag;            // A flag indicating PWM status.
 
-void pwm_ready_callback(uint32_t pwm_id)    // PWM callback function
-{
-    ready_flag = true;
-}
+// void pwm_ready_callback(uint32_t pwm_id)    // PWM callback function
+// {
+//     ready_flag = true;
+// }
 
-static nrf_drv_pwm_t m_pwm0 = NRF_DRV_PWM_INSTANCE(0);
+// static nrf_drv_pwm_t m_pwm0 = NRF_DRV_PWM_INSTANCE(0);
 // static nrf_drv_pwm_t m_pwm1 = NRF_DRV_PWM_INSTANCE(1);
 // static nrf_drv_pwm_t m_pwm2 = NRF_DRV_PWM_INSTANCE(2);
 
 // This is for tracking PWM instances being used, so we can unintialize only
 // the relevant ones when switching from one demo to another.
 #define USED_PWM(idx) (1UL << idx)
-static uint8_t m_used = 0;
+// static uint8_t m_used = 0;
 
-static uint16_t const              m_demo1_top  = 2000;
-static uint16_t const              m_demo1_step = 4;
-static uint16_t                    m_demo1_phase;
-static uint8_t                     m_demo1_digit;
-static uint8_t                     m_demo1_channel;
-static uint16_t                    m_demo1_dongle_id;
-static nrf_pwm_values_individual_t m_demo1_seq_values;
-static nrf_pwm_sequence_t const    m_demo1_seq =
-{
-    .values.p_individual = &m_demo1_seq_values,
-    .length              = NRF_PWM_VALUES_LENGTH(m_demo1_seq_values),
-    .repeats             = 0,
-    .end_delay           = 0
-};
+// static uint16_t const              m_demo1_top  = 2000;
+// static uint16_t const              m_demo1_step = 4;
+// static uint16_t                    m_demo1_phase;
+// static uint8_t                     m_demo1_digit;
+// static uint8_t                     m_demo1_channel;
+// static uint16_t                    m_demo1_dongle_id;
+// static nrf_pwm_values_individual_t m_demo1_seq_values;
+// static nrf_pwm_sequence_t const    m_demo1_seq =
+// {
+//     .values.p_individual = &m_demo1_seq_values,
+//     .length              = NRF_PWM_VALUES_LENGTH(m_demo1_seq_values),
+//     .repeats             = 0,
+//     .end_delay           = 0
+// };
 
-static void demo1_handler(nrf_drv_pwm_evt_type_t event_type)
-{
-    if ((event_type == NRF_DRV_PWM_EVT_FINISHED) && (!nrf_gpio_pin_read(BUTTON_1)))
-    {
-        uint8_t channel    = m_demo1_channel;
-        bool    down       = m_demo1_phase & 1;
-        bool    next_phase = false;
+// static void demo1_handler(nrf_drv_pwm_evt_type_t event_type)
+// {
+//     if ((event_type == NRF_DRV_PWM_EVT_FINISHED) && (!nrf_gpio_pin_read(BUTTON_1)))
+//     {
+//         uint8_t channel    = m_demo1_channel;
+//         bool    down       = m_demo1_phase & 1;
+//         bool    next_phase = false;
 
-        uint16_t * p_channels = (uint16_t *)&m_demo1_seq_values;
-        uint16_t value = p_channels[channel];
-        if (down)
-        {
-            value -= m_demo1_step;
-            if (value == 0)
-            {
-                next_phase = true;
-            }
-        }
-        else
-        {
-            value += m_demo1_step;
-            if (value >= m_demo1_top)
-            {
-                next_phase = true;
-            }
-        }
-        p_channels[channel] = value;
+//         uint16_t * p_channels = (uint16_t *)&m_demo1_seq_values;
+//         uint16_t value = p_channels[channel];
+//         if (down)
+//         {
+//             value -= m_demo1_step;
+//             if (value == 0)
+//             {
+//                 next_phase = true;
+//             }
+//         }
+//         else
+//         {
+//             value += m_demo1_step;
+//             if (value >= m_demo1_top)
+//             {
+//                 next_phase = true;
+//             }
+//         }
+//         p_channels[channel] = value;
 
-        if (next_phase)
-        {
-            if (++m_demo1_phase >= 2 * m_demo1_digit)
-            {
-                m_demo1_phase = 0;
-                m_demo1_channel++;
-                m_demo1_channel = m_demo1_channel % NRF_PWM_CHANNEL_COUNT;
-                m_demo1_dongle_id   = DONGLE_ID;
-                for (int i = 0; i < 3 - m_demo1_channel; i++)
-                    m_demo1_dongle_id = m_demo1_dongle_id / 10;
-                m_demo1_digit   = m_demo1_dongle_id % 10;
-            }
-        }
-    }
-}
-static void demo1(void)
-{
-    NRF_LOG_INFO("Demo 1");
+//         if (next_phase)
+//         {
+//             if (++m_demo1_phase >= 2 * m_demo1_digit)
+//             {
+//                 m_demo1_phase = 0;
+//                 m_demo1_channel++;
+//                 m_demo1_channel = m_demo1_channel % NRF_PWM_CHANNEL_COUNT;
+//                 m_demo1_dongle_id   = DONGLE_ID;
+//                 for (int i = 0; i < 3 - m_demo1_channel; i++)
+//                     m_demo1_dongle_id = m_demo1_dongle_id / 10;
+//                 m_demo1_digit   = m_demo1_dongle_id % 10;
+//             }
+//         }
+//     }
+// }
+// static void demo1(void)
+// {
+//     NRF_LOG_INFO("Demo 1");
 
-    nrf_drv_pwm_config_t const config0 =
-    {
-        .output_pins =
-        {
-            BSP_LED_0 | NRF_DRV_PWM_PIN_INVERTED, // channel 0
-            BSP_LED_1 | NRF_DRV_PWM_PIN_INVERTED, // channel 1
-            BSP_LED_2 | NRF_DRV_PWM_PIN_INVERTED, // channel 2
-            BSP_LED_3 | NRF_DRV_PWM_PIN_INVERTED, // channel 3
-        },
-        .irq_priority = APP_IRQ_PRIORITY_LOWEST,
-        .base_clock   = NRF_PWM_CLK_2MHz,
-        .count_mode   = NRF_PWM_MODE_UP,
-        .top_value    = m_demo1_top,
-        .load_mode    = NRF_PWM_LOAD_INDIVIDUAL,
-        .step_mode    = NRF_PWM_STEP_AUTO
-    };
-    APP_ERROR_CHECK(nrf_drv_pwm_init(&m_pwm0, &config0, demo1_handler));
-    m_used |= USED_PWM(0);
+//     nrf_drv_pwm_config_t const config0 =
+//     {
+//         .output_pins =
+//         {
+//             BSP_LED_0 | NRF_DRV_PWM_PIN_INVERTED, // channel 0
+//             BSP_LED_1 | NRF_DRV_PWM_PIN_INVERTED, // channel 1
+//             BSP_LED_2 | NRF_DRV_PWM_PIN_INVERTED, // channel 2
+//             BSP_LED_3 | NRF_DRV_PWM_PIN_INVERTED, // channel 3
+//         },
+//         .irq_priority = APP_IRQ_PRIORITY_LOWEST,
+//         .base_clock   = NRF_PWM_CLK_2MHz,
+//         .count_mode   = NRF_PWM_MODE_UP,
+//         .top_value    = m_demo1_top,
+//         .load_mode    = NRF_PWM_LOAD_INDIVIDUAL,
+//         .step_mode    = NRF_PWM_STEP_AUTO
+//     };
+//     APP_ERROR_CHECK(nrf_drv_pwm_init(&m_pwm0, &config0, demo1_handler));
+//     m_used |= USED_PWM(0);
 
-    m_demo1_seq_values.channel_0 = 0;
-    m_demo1_seq_values.channel_1 = 0;
-    m_demo1_seq_values.channel_2 = 0;
-    m_demo1_seq_values.channel_3 = 0;
-    m_demo1_phase                = 0;
-    m_demo1_channel     = 0;
-    m_demo1_dongle_id   = DONGLE_ID;
-    for (int i = 0; i < 3 - m_demo1_channel; i++)
-        m_demo1_dongle_id = m_demo1_dongle_id / 10;
-    m_demo1_digit   = m_demo1_dongle_id % 10;
+//     m_demo1_seq_values.channel_0 = 0;
+//     m_demo1_seq_values.channel_1 = 0;
+//     m_demo1_seq_values.channel_2 = 0;
+//     m_demo1_seq_values.channel_3 = 0;
+//     m_demo1_phase                = 0;
+//     m_demo1_channel     = 0;
+//     m_demo1_dongle_id   = DONGLE_ID;
+//     for (int i = 0; i < 3 - m_demo1_channel; i++)
+//         m_demo1_dongle_id = m_demo1_dongle_id / 10;
+//     m_demo1_digit   = m_demo1_dongle_id % 10;
 
-    (void)nrf_drv_pwm_simple_playback(&m_pwm0, &m_demo1_seq, 1,
-                                      NRF_DRV_PWM_FLAG_LOOP);
-}
+//     (void)nrf_drv_pwm_simple_playback(&m_pwm0, &m_demo1_seq, 1,
+//                                       NRF_DRV_PWM_FLAG_LOOP);
+// }
 
 /**
  * @brief Function for application main entry.
@@ -344,7 +345,12 @@ int main(void)
     // int multiplier;
     // ret_code_t err_code;
     // ret_code_t ret;
-    // uint32_t value;
+    uint32_t value;
+    uint32_t time_first;
+    uint32_t time_second;
+    uint32_t time_start;
+    uint32_t time_finish;
+    nrfx_systick_state_t systick_state;
 
     // ret = app_timer_create(&m_timer_1, APP_TIMER_MODE_REPEATED, timer_handle);
     // APP_ERROR_CHECK(ret);
@@ -357,40 +363,46 @@ int main(void)
     LOG_BACKEND_USB_PROCESS();
     NRF_LOG_PROCESS();
     board_init();
-    demo1();
+    // demo1();
 
-    // while (true)
-    // {
-    //     for (uint8_t i = 0; i < 40; ++i)
-    //     {
-    //         value = (i < 20) ? (i * 5) : (100 - (i - 20) * 5);
-
-    //         ready_flag = false;
-    //         /* Set the duty cycle - keep trying until PWM is ready... */
-    //         while (app_pwm_channel_duty_set(&PWM1, 0, value) == NRF_ERROR_BUSY);
-
-    //         /* ... or wait for callback. */
-    //         while (!ready_flag);
-    //         APP_ERROR_CHECK(app_pwm_channel_duty_set(&PWM1, 1, value));
-    //         nrfx_systick_delay_ms(25);
-    //     }
-    // }
-
-    // /* Toggle LEDs. */
     while (true)
     {
+        nrfx_systick_get(&systick_state);
+        time_start = systick_state.time;
+        for (uint8_t i = 0; i < 200; ++i)
+        {
+            value = (i < 100) ? i : (200 - i);
+            (void)value;
+
+            nrfx_systick_get(&systick_state);
+            time_first = systick_state.time;
+
+            nrfx_systick_delay_ms(1);
+
+            nrfx_systick_get(&systick_state);
+            time_second = systick_state.time;
+        }
+        nrfx_systick_get(&systick_state);
+        time_finish = systick_state.time;
+        NRF_LOG_RAW_INFO("ticks first %d, second %d, start %d, stop %d\n", 
+                            time_first, time_second, time_start, time_finish);
+        LOG_BACKEND_USB_PROCESS();
+        NRF_LOG_PROCESS();
+    }
+
+    // /* Toggle LEDs. */
+    // while (true)
+    // {
     //     if (!nrf_gpio_pin_read(BUTTON_1)) /* Button pressed, active 0 */
     //     {
     //         dongle_id = DONGLE_ID;
     //         multiplier = 1000;
-            for (int i = 0; i < LEDS_NUMBER; i++)
-            {
+            // for (int i = 0; i < LEDS_NUMBER; i++)
+            // {
     //             dongle_id_digit = dongle_id / multiplier;
     //             for (int j = 0; j < dongle_id_digit << 1; j++)
     //             {
                     // NRF_LOG_INFO("test %i", i);
-                    LOG_BACKEND_USB_PROCESS();
-                    NRF_LOG_PROCESS();
                     // nrf_delay_us(500);
     //                 nrf_gpio_pin_toggle(led_list[i]);
     //                 pass_delay_when_button_is_pressed(500,50);
@@ -398,8 +410,8 @@ int main(void)
     //             dongle_id -= dongle_id_digit * multiplier;
     //             multiplier /= 10;
     //         }
-        }
-    }
+    //     }
+    // }
 }
 
 /**
