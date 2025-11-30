@@ -335,6 +335,18 @@ void logs_init()
 //                                       NRF_DRV_PWM_FLAG_LOOP);
 // }
 
+void do_pwm_cycle(uint8_t value, nrfx_gpiote_pin_t pin)
+{
+
+    for (uint8_t j = 0; j < 5; ++j)
+    {
+        nrfx_gpiote_out_clear(pin);
+        nrfx_systick_delay_us(10*value);
+
+        nrfx_gpiote_out_set(pin);
+        nrfx_systick_delay_us(10*(100 - value));
+    }
+}
 /**
  * @brief Function for application main entry.
  */
@@ -351,6 +363,11 @@ int main(void)
     uint32_t time_start;
     uint32_t time_finish;
     nrfx_systick_state_t systick_state;
+
+    (void)time_first;
+    (void)time_second;
+    (void)time_start;
+    (void)time_finish;
 
     // ret = app_timer_create(&m_timer_1, APP_TIMER_MODE_REPEATED, timer_handle);
     // APP_ERROR_CHECK(ret);
@@ -374,18 +391,12 @@ int main(void)
             value = (i < 100) ? i : (200 - i);
             (void)value;
 
-            nrfx_systick_get(&systick_state);
-            time_first = systick_state.time;
-
-            nrfx_systick_delay_ms(1);
-
-            nrfx_systick_get(&systick_state);
-            time_second = systick_state.time;
+            do_pwm_cycle(value, BSP_LED_3);
         }
         nrfx_systick_get(&systick_state);
         time_finish = systick_state.time;
-        NRF_LOG_RAW_INFO("ticks first %d, second %d, start %d, stop %d\n", 
-                            time_first, time_second, time_start, time_finish);
+        // NRF_LOG_RAW_INFO("ticks first %d, second %d, start %d, stop %d\n", 
+        //                     time_first, time_second, time_start, time_finish);
         LOG_BACKEND_USB_PROCESS();
         NRF_LOG_PROCESS();
     }
