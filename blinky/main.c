@@ -58,21 +58,29 @@ const uint8_t led_list[LEDS_NUMBER] = LEDS_LIST;
 const uint8_t btn_list[BUTTONS_NUMBER] = BUTTONS_LIST;
 bool     m_counter_active = false;
 uint8_t  m_counter = 0;
+typedef enum {
+    BUTTON_RELEASED,
+    BUTTON_PRESSED,
+    BUTTON_DOUBLE_PRESSED
+} button_state_t;
+volatile button_state_t g_button_state = BUTTON_RELEASED;
 
 /* Counter timer. */
+APP_TIMER_DEF(m_timer_0);
 // APP_TIMER_DEF(m_timer_0);
-APP_TIMER_DEF(m_timer_1);
 
 void led_off(uint32_t led_idx)
 {
     ASSERT(led_idx < LEDS_NUMBER);
-    nrf_gpio_pin_write(led_list[led_idx], LEDS_ACTIVE_STATE ? 0 : 1);
+    nrfx_gpiote_out_set(led_list[led_idx]);
+    // nrf_gpio_pin_write(led_list[led_idx], LEDS_ACTIVE_STATE ? 0 : 1);
 }
 
 void led_on(uint32_t led_idx)
 {
     ASSERT(led_idx < LEDS_NUMBER);
-    nrf_gpio_pin_write(led_list[led_idx], LEDS_ACTIVE_STATE ? 1 : 0);
+    nrfx_gpiote_out_clear(led_list[led_idx]);
+    // nrf_gpio_pin_write(led_list[led_idx], LEDS_ACTIVE_STATE ? 1 : 0);
 }
 
 void leds_off(void)
@@ -107,40 +115,51 @@ void gpio_output_voltage_setup(void)
 
 void leds_init(void)
 {
-    uint32_t i;
-    gpio_output_voltage_setup();
-    for (i = 0; i < LEDS_NUMBER; ++i)
+    nrfx_gpiote_out_config_t config = NRFX_GPIOTE_CONFIG_OUT_TASK_TOGGLE(true);
+    
+    // gpio_output_voltage_setup();
+    for (uint8_t i = 0; i < LEDS_NUMBER; ++i)
     {
-        nrf_gpio_cfg_output(led_list[i]);
+        nrfx_gpiote_out_init(led_list[i], &config);
+        // nrf_gpio_cfg_output(led_list[i]);
     }
     leds_off();
 }
 
 void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 {
-    if (action == NRF_GPIOTE_POLARITY_HITOLO)
+    if (action == NRF_GPIOTE_POLARITY_TOGGLE)
     {
-        NRF_LOG_RAW_INFO("button pressed");
+        ret_code_t ret;
+        if (!nrfx_gpiote_in_is_set(pin))
+        {
+            ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(505), NULL);
+            APP_ERROR_CHECK(ret);
+            g_button_state = BUTTON_PRESSED;
+            NRF_LOG_RAW_INFO("\n%d: button toggle, pin 0x%x set\n", app_timer_cnt_get(),pin);
+        }
+        else
+        {
+            ret = app_timer_stop(m_timer_0);
+            NRF_LOG_RAW_INFO("\n%d: button toggle, pin 0x%x unset\n", app_timer_cnt_get(), pin);
+            APP_ERROR_CHECK(ret);
+            /* no other way to drop timer - only via interrupt X(*/
+            ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(5), NULL);
+            APP_ERROR_CHECK(ret);
+            g_button_state = BUTTON_RELEASED;
+        }
     }
     else if (action == NRF_GPIOTE_POLARITY_LOTOHI)
     {
         NRF_LOG_RAW_INFO("button released");
     }
+    else if (action == NRF_GPIOTE_POLARITY_HITOLO)
+    {
+        NRF_LOG_RAW_INFO("button pressed");
+    }
     else
     {
-        ret_code_t ret;
-        if (!nrfx_gpiote_in_is_set(pin))
-        {
-            ret = app_timer_start(m_timer_1, APP_TIMER_TICKS(500), NULL);
-            APP_ERROR_CHECK(ret);
-            NRF_LOG_RAW_INFO("\n%d: button toggle, pin 0x%x set\n", app_timer_cnt_get(),pin);
-        }
-        else
-        {
-            ret = app_timer_stop(m_timer_1);
-            APP_ERROR_CHECK(ret);
-            NRF_LOG_RAW_INFO("\n%d: button toggle, pin 0x%x unset\n", app_timer_cnt_get(), pin);
-        }
+        NRF_LOG_ERROR("button unknown action");
     }
 }
 
@@ -164,16 +183,19 @@ void buttons_init(void)
     }
 }
 
+// void RTC0_IRQHandler(void)
+// {
+    
+// }
 
-static void timer_handle(void * p_context)
+void timer_handle(void * p_context)
 {
+    ret_code_t ret;
     UNUSED_PARAMETER(p_context);
-
-    if (true)
-    {
-        m_counter++;
-        NRF_LOG_RAW_INFO("\ntimer! counter = %d\n", m_counter);
-    }
+    ret = app_timer_stop(m_timer_0);
+    APP_ERROR_CHECK(ret);
+    m_counter++;
+    NRF_LOG_RAW_INFO("\n%d: timer! counter = %d; button state %d \n", app_timer_cnt_get(), m_counter, g_button_state);
 }
 
 
@@ -182,7 +204,10 @@ void timer_init(void)
     ret_code_t ret;
 
     app_timer_init();
-    ret = app_timer_create(&m_timer_1, APP_TIMER_MODE_SINGLE_SHOT, timer_handle);
+    ret = app_timer_create(&m_timer_0, APP_TIMER_MODE_REPEATED, timer_handle);
+    APP_ERROR_CHECK(ret);
+
+    ret = app_timer_start(m_timer_0, APP_TIMER_TICKS(5), NULL);
     APP_ERROR_CHECK(ret);
 
  }
@@ -236,7 +261,7 @@ void logs_init()
 
 // This is for tracking PWM instances being used, so we can unintialize only
 // the relevant ones when switching from one demo to another.
-#define USED_PWM(idx) (1UL << idx)
+// #define USED_PWM(idx) (1UL << idx)
 // static uint8_t m_used = 0;
 
 // static uint16_t const              m_demo1_top  = 2000;
@@ -335,15 +360,15 @@ void logs_init()
 //                                       NRF_DRV_PWM_FLAG_LOOP);
 // }
 
-void do_pwm_cycle(uint8_t value, nrfx_gpiote_pin_t pin)
+void do_pwm_cycle(uint8_t value, uint8_t led_idx)
 {
 
-    for (uint8_t j = 0; j < 5; ++j)
+    for (uint8_t j = 0; j < 20 - value / 10; ++j)
     {
-        nrfx_gpiote_out_clear(pin);
+        led_on(led_idx);
         nrfx_systick_delay_us(10*value);
 
-        nrfx_gpiote_out_set(pin);
+        led_off(led_idx);
         nrfx_systick_delay_us(10*(100 - value));
     }
 }
@@ -358,29 +383,23 @@ int main(void)
     // ret_code_t err_code;
     // ret_code_t ret;
     uint32_t value;
-    uint32_t time_first;
-    uint32_t time_second;
+    // uint32_t time_first;
+    // uint32_t time_second;
     uint32_t time_start;
     uint32_t time_finish;
     nrfx_systick_state_t systick_state;
 
-    (void)time_first;
-    (void)time_second;
-    (void)time_start;
-    (void)time_finish;
-
-    // ret = app_timer_create(&m_timer_1, APP_TIMER_MODE_REPEATED, timer_handle);
-    // APP_ERROR_CHECK(ret);
-
-    // ret = app_timer_start(m_timer_1, APP_TIMER_TICKS(1000), NULL);
-    // APP_ERROR_CHECK(ret);
+    // (void)time_first;
+    // (void)time_second;
+    // (void)time_start;
+    // (void)time_finish;
 
     logs_init();
-    NRF_LOG_INFO("Workshop4 sample started.");
-    LOG_BACKEND_USB_PROCESS();
-    NRF_LOG_PROCESS();
     board_init();
     // demo1();
+    NRF_LOG_INFO("Workshop4 sample started.");
+    NRF_LOG_PROCESS();
+    LOG_BACKEND_USB_PROCESS();
 
     while (true)
     {
@@ -391,14 +410,14 @@ int main(void)
             value = (i < 100) ? i : (200 - i);
             (void)value;
 
-            do_pwm_cycle(value, BSP_LED_3);
+            do_pwm_cycle(value, 1);
         }
         nrfx_systick_get(&systick_state);
         time_finish = systick_state.time;
-        // NRF_LOG_RAW_INFO("ticks first %d, second %d, start %d, stop %d\n", 
-        //                     time_first, time_second, time_start, time_finish);
-        LOG_BACKEND_USB_PROCESS();
+        NRF_LOG_INFO("ticks start %d, stop %d", 
+                            time_start, time_finish);
         NRF_LOG_PROCESS();
+        LOG_BACKEND_USB_PROCESS();
     }
 
     // /* Toggle LEDs. */
