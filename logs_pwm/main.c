@@ -60,6 +60,7 @@
 #include "app_usbd.h"
 #include "app_usbd_serial_num.h"
 #include "nrfx_gpiote.h"
+#include "nrfx_systick.h"
 
 const uint8_t led_list[LEDS_NUMBER] = LEDS_LIST;
 const uint8_t btn_list[BUTTONS_NUMBER] = BUTTONS_LIST;
@@ -87,14 +88,6 @@ void leds_off(void)
     }
 }
 
-void logs_init()
-{
-    ret_code_t ret = NRF_LOG_INIT(NULL);
-    APP_ERROR_CHECK(ret);
-
-    NRF_LOG_DEFAULT_BACKENDS_INIT();
-}
-
 void leds_init(void)
 {
     nrfx_gpiote_out_config_t config = NRFX_GPIOTE_CONFIG_OUT_TASK_TOGGLE(true);
@@ -108,13 +101,35 @@ void leds_init(void)
     leds_off();
 }
 
+void logs_init()
+{
+    ret_code_t ret = NRF_LOG_INIT(NULL);
+    APP_ERROR_CHECK(ret);
+
+    NRF_LOG_DEFAULT_BACKENDS_INIT();
+}
+
 void board_init(void)
 {
+    logs_init();
     nrfx_gpiote_init();
     leds_init();
     // buttons_init();
-    // nrfx_systick_init();
+    nrfx_systick_init();
     // timer_init();
+}
+
+void do_pwm_cycle(uint8_t value, uint8_t led_idx)
+{
+
+    for (uint8_t j = 0; j < 20 - value / 10; ++j)
+    {
+        led_on(led_idx);
+        nrfx_systick_delay_us(10*value);
+
+        led_off(led_idx);
+        nrfx_systick_delay_us(10*(100 - value));
+    }
 }
 
 /**
@@ -122,17 +137,32 @@ void board_init(void)
  */
 int main(void)
 {
-    logs_init();
+    // uint32_t value;
+    uint32_t time_start;
+    uint32_t time_finish;
+    nrfx_systick_state_t systick_state;
+    board_init();
 
     NRF_LOG_INFO("Starting up the test project with USB logging");
 
     // (void) nrf_dfu_trigger_usb_init();
     // bsp_board_init(BSP_INIT_LEDS);
 
-    int iter_count = 0;
     while (true)
     {
-        NRF_LOG_INFO("Iter %d", iter_count++);
+        nrfx_systick_get(&systick_state);
+        time_start = systick_state.time;
+        // for (uint8_t i = 0; i < 200; ++i)
+        // {
+        //     value = (i < 100) ? i : (200 - i);
+        //     (void)value;
+
+        //     do_pwm_cycle(value, 1);
+        // }
+        nrfx_systick_get(&systick_state);
+        time_finish = systick_state.time;
+        NRF_LOG_INFO("ticks start %d, stop %d", 
+                            time_start, time_finish);
 
         LOG_BACKEND_USB_PROCESS();
         NRF_LOG_PROCESS();

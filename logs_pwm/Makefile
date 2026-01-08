@@ -1,4 +1,4 @@
-PROJECT_NAME     := usb_logs_pca10059
+PROJECT_NAME     := usb_logs_pca10059_svchaos
 TARGETS          := nrf52840_logs_pwm
 OUTPUT_DIRECTORY := _build
 DFU_PACKAGE      := $(OUTPUT_DIRECTORY)/nrf52840_logs_pwm.dfu_logs_pwm
@@ -9,7 +9,7 @@ SDK_ROOT ?= /home/user/devel/esl-nsdk
 PROJ_DIR ?= $(realpath $(CURDIR))
 
 $(OUTPUT_DIRECTORY)/nrf52840_logs_pwm.out: \
-  LINKER_SCRIPT  := usb_logs_gcc_nrf52.ld
+  LINKER_SCRIPT  := $(PROJ_DIR)/logs_pwm/usb_logs_gcc_nrf52.ld
 
 # Source files common to all targets
 SRC_FILES += \
@@ -179,13 +179,12 @@ ASMFLAGS += -DuECC_VLI_NATIVE_LITTLE_ENDIAN=1
 
 # Linker flags
 LDFLAGS += $(OPT)
-LDFLAGS += -mthumb -mabi=aapcs -L$(SDK_ROOT)/modules/nrfx/mdk -T$(LINKER_SCRIPT)
+LDFLAGS += -mthumb -mabi=aapcs -L$(SDK_ROOT)/modules/nrfx/mdk
 LDFLAGS += -mcpu=cortex-m4
 LDFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # let linker dump unused sections
 LDFLAGS += -Wl,--gc-sections
 # use newlib in nano version
-LDFLAGS += --specs=nano.specs
 
 nrf52840_logs_pwm: CFLAGS += -D__HEAP_SIZE=8192
 nrf52840_logs_pwm: CFLAGS += -D__STACK_SIZE=8192
@@ -233,5 +232,4 @@ $(DFU_PACKAGE): $(OUTPUT_DIRECTORY)/nrf52840_logs_pwm.hex
 
 dfu_logs_pwm: $(DFU_PACKAGE)
 	@echo Performing DFU with generated package
-	nrfutil dfu_logs_pwm usb-serial -pkg $< -p $(DFU_PORT) -b 115200
-
+	nrfutil dfu usb-serial -pkg $< -p $(DFU_PORT) -b 115200
