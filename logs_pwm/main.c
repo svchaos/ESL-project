@@ -137,7 +137,7 @@ void do_pwm_cycle(uint8_t value, uint8_t led_idx)
  */
 int main(void)
 {
-    // uint32_t value;
+    uint32_t value;
     uint32_t time_start;
     uint32_t time_finish;
     nrfx_systick_state_t systick_state;
@@ -152,20 +152,20 @@ int main(void)
     {
         nrfx_systick_get(&systick_state);
         time_start = systick_state.time;
-        // for (uint8_t i = 0; i < 200; ++i)
-        // {
-        //     value = (i < 100) ? i : (200 - i);
-        //     (void)value;
+        for (uint8_t i = 0; i < 200; ++i)
+        {
+            value = (i < 100) ? i : (200 - i);
+            (void)value;
 
-        //     do_pwm_cycle(value, 1);
-        // }
-        nrfx_systick_get(&systick_state);
-        time_finish = systick_state.time;
-        NRF_LOG_INFO("ticks start %d, stop %d", 
-                            time_start, time_finish);
+            do_pwm_cycle(value, 0);
+            nrfx_systick_get(&systick_state);
+            time_finish = systick_state.time;
+            NRF_LOG_INFO("ticks start %d, stop %d", 
+                                time_start, time_finish);
 
-        LOG_BACKEND_USB_PROCESS();
-        NRF_LOG_PROCESS();
+            LOG_BACKEND_USB_PROCESS();
+            NRF_LOG_PROCESS();
+        }
     }
 }
 
